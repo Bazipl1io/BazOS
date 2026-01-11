@@ -1,11 +1,16 @@
+from explorer import open_explorer
+
 import tkinter as tk
 import os
 import shutil
 import getpass
 import platform
 import subprocess
+import time
 import psutil
 import wmi
+import vlc
+import pygetwindow as gw
 from PIL import Image, ImageTk
 
 # ====== НАСТРОЙКИ ======
@@ -26,6 +31,7 @@ if os.path.exists(history_file):
 # ====== ОКНО ======
 root = tk.Tk()
 root.attributes("-fullscreen", True)
+root.attributes("-topmost", True)
 root.overrideredirect(True)
 root.configure(bg="black")
 
@@ -74,10 +80,91 @@ def write(text):
     output.see(tk.END)
     output.config(state="disabled")
 
+# ====== БЛОКИРОВКА ОКНА ======
+def lock_window(window, w=800, h=500, parent=None): # Добавили аргумент parent
+    window.transient(parent if parent else root) # Указываем реального родителя
+    window.attributes("-topmost", True)
+    window.overrideredirect(True)
+
+    screen_w = window.winfo_screenwidth()
+    screen_h = window.winfo_screenheight()
+    x = (screen_w - w) // 2
+    y = (screen_h - h) // 2
+    window.geometry(f"{w}x{h}+{x}+{y}")
+
+    window.lift()
+    window.focus_force()
+
+    def close_and_focus():
+        window.destroy()
+        if parent:
+            parent.lift() # Поднимаем родителя (например, проводник)
+            parent.focus_force()
+        else:
+            entry.focus_force() # Если родителя нет, возвращаем в терминал
+
+    window.bind("<Escape>", lambda e: close_and_focus())
+    return close_and_focus
+
+# ===== ЗАКРЫТИЕ ПРИЛОЖЕНИЯ ======
 def on_closing():
     if os.path.exists(history_file):
         os.remove(history_file)
     root.destroy()
+
+# ====== КАСТОМНЫЙ ТИТЛБАР ======
+def make_titlebar(window, title="Window", close_command=None):
+    bg_color = "#1a1a1a"
+    accent_color = "#ff9d00"
+
+    titlebar = tk.Frame(window, bg=bg_color, height=30)
+    titlebar.pack(fill="x", side="top")
+    titlebar.pack_propagate(False)
+
+    # Название окна
+    title_label = tk.Label(
+        titlebar, 
+        text=f" 🖥️ {title}",
+        bg=bg_color, 
+        fg=accent_color,
+        font=("Consolas", 10, "bold")
+    )
+    title_label.pack(side="left", padx=5)
+
+    # Кнопка закрытия (использует переданную команду)
+    cmd = close_command if close_command else window.destroy
+    close_btn = tk.Button(
+        titlebar, 
+        text=" [X] ",
+        bg=bg_color, 
+        fg=accent_color,
+        font=("Consolas", 10, "bold"),
+        border=0,
+        activebackground="#ff3333",
+        activeforeground="white",
+        command=cmd
+    )
+    close_btn.pack(side="right", padx=5)
+
+    # Логика перемещения окна
+    def start_move(event):
+        window.x = event.x
+        window.y = event.y
+
+    def do_move(event):
+        x = event.x_root - window.x
+        y = event.y_root - window.y
+        window.geometry(f"+{x}+{y}")
+
+    titlebar.bind("<ButtonPress-1>", start_move)
+    titlebar.bind("<B1-Motion>", do_move)
+    title_label.bind("<ButtonPress-1>", start_move)
+    title_label.bind("<B1-Motion>", do_move)
+
+    # Оранжевая рамка для всего окна
+    window.config(highlightbackground=accent_color, highlightthickness=1)
+
+    return title_label
 
 # ====== СПРАВКА ======
 def help():
@@ -96,141 +183,35 @@ def help():
     write("help      - show this help message\n")
     write("--------------------------------------------------\n\n")
 
-
-# ====== ПРОВОДНИК ======
-def open_explorer(start_path):
-    path = start_path
-    explorer = tk.Toplevel(root)
-    explorer.title(f"Explorer - {path}")
-    explorer.geometry("600x400")
-    explorer.configure(bg="#1a1a1a")
-
-    path_label = tk.Label(explorer, text=path, bg="#1a1a1a", fg="#ff9d00", font=("Consolas", 12))
-    path_label.pack(anchor="w", padx=5, pady=5)
-
-    def go_back():
-        nonlocal path
-        parent = os.path.dirname(path)
-        if os.path.exists(parent):
-            path = parent
-            update_list(path)
-
-    btn_frame = tk.Frame(explorer, bg="#1a1a1a")
-    btn_frame.pack(fill="x", padx=5)
-
-    back_btn = tk.Button(
-        btn_frame,
-        text=".. (Back)",
-        bg="#2d2929",
-        fg="#ff9d00",
-        font=("Consolas", 10),
-        border=0,
-        command=go_back
-    )
-    back_btn.pack(anchor="w")
-
-    listbox = tk.Listbox(explorer, bg="black", fg="#ff9d00", font=("Consolas", 12))
-    listbox.pack(fill="both", expand=True)
-
-    def update_list(dir_path):
-        listbox.delete(0, tk.END)
-        path_label.config(text=dir_path)
-        try:
-            for item in os.listdir(dir_path):
-                listbox.insert(tk.END, item)
-        except Exception as e:
-            listbox.insert(tk.END, f"Error: {e}")
-
-    def on_double_click(event):
-        nonlocal path
-        selection = listbox.curselection()
-        if not selection:
-            return
-
-        selected = listbox.get(selection[0])
-        full_path = os.path.join(path, selected)
-
-        # Если папка — заходим в неё
-        if os.path.isdir(full_path):
-            path = full_path
-            update_list(path)
-            return
-
-        # Если файл
-        ext = os.path.splitext(selected)[1].lower()
-
-        # Текстовые файлы → nano
-        if ext in [".txt", ".py", ".md", ".json", ".cfg", ".ini", ".log"]:
-            nano(os.path.relpath(full_path, current_dir))
-
-        # Картинки → твой просмотрщик
-        elif ext in [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"]:
-            open_image(os.path.relpath(full_path, current_dir))
-
-        # Всё остальное → через Windows
-        else:
-            try:
-                os.startfile(full_path)
-            except Exception as e:
-                write(f"open: cannot open file: {e}\n")
-
-
-    listbox.bind("<Double-Button-1>", on_double_click)
-    update_list(path)
-
 # ====== БЛОКНОТ (nano) ======
-def nano(filename):
+def nano(filename, parent_window=None):
     full_path = os.path.join(current_dir, filename)
-
     editor = tk.Toplevel(root)
-    editor.title(f"nano - {filename}")
-    editor.geometry("700x500")
+    
+    # Передаем родителя
+    close_cmd = lock_window(editor, 700, 500, parent=parent_window)
+    make_titlebar(editor, title=f"nano - {filename}", close_command=close_cmd)
+    
     editor.configure(bg="black")
+    text_widget = tk.Text(editor, bg="black", fg="#ff9d00", insertbackground="#ff9d00", font=("Consolas", 13), border=0, padx=10, pady=10)
+    text_widget.pack(expand=True, fill="both")
 
-    text = tk.Text(
-        editor,
-        bg="#1a1a1a",
-        fg="#ff9d00",
-        insertbackground="#ff9d00",
-        font=("Consolas", 14)
-    )
-    text.pack(expand=True, fill="both")
-
-    # Если файл существует — загрузить его
     if os.path.exists(full_path):
-        try:
-            with open(full_path, "r", encoding="utf-8") as f:
-                text.insert("1.0", f.read())
-        except Exception as e:
-            write(f"nano: error opening file: {e}\n")
+        with open(full_path, "r", encoding="utf-8") as f:
+            text_widget.insert("1.0", f.read())
 
-    # Сохранение
-    def save_file(event=None):
-        try:
-            with open(full_path, "w", encoding="utf-8") as f:
-                f.write(text.get("1.0", "end-1c"))
-            write(f"nano: saved {filename}\n")
-        except Exception as e:
-            write(f"nano: error saving file: {e}\n")
-        return "break"
+    def save():
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(text_widget.get("1.0", "end-1c"))
+        write(f"nano: {filename} saved.\n")
 
-    # Закрытие
-    def exit_editor(event=None):
-        editor.destroy()
-        return "break"
+    help_bar = tk.Frame(editor, bg="#1a1a1a")
+    help_bar.pack(fill="x", side="bottom")
+    tk.Label(help_bar, text=" [Ctrl+S] Save  [Ctrl+X] Exit ", bg="#1a1a1a", fg="#ff9d00", font=("Consolas", 9)).pack(pady=2)
 
-    editor.bind("<Control-s>", save_file)
-    editor.bind("<Control-x>", exit_editor)
-
-    info = tk.Label(
-        editor,
-        text="Ctrl+S — сохранить | Ctrl+X — выйти",
-        bg="#111",
-        fg="#ff9d00",
-        font=("Consolas", 12)
-    )
-    info.pack(fill="x")
-
+    editor.bind("<Control-s>", lambda e: save())
+    editor.bind("<Control-x>", lambda e: close_cmd())
+    text_widget.focus_set()
 
 # ====== ИНФОРМАЦИЯ О ВИДЕОКАРТЕ ======
 def get_gpu_info():
@@ -297,49 +278,66 @@ def bazfetch():
         write(f"{left}   {right}\n")
     write("\n")
 
-
-# ====== ПРОСМОТРЩИК КАРТИНОК ======
-def open_image(file_path):
-    full_path = os.path.join(current_dir, file_path)
+# ====== УНИВЕРСАЛЬНЫЙ МЕДИАПЛЕЕР (ФОТО И ВИДЕО) ======
+def open_media(file_path, parent_window=None):
+    full_path = os.path.abspath(os.path.join(current_dir, file_path))
     if not os.path.isfile(full_path):
         write(f"open: {file_path} does not exist\n")
         return
 
-    try:
-        img = Image.open(full_path)
-        img_width, img_height = img.size
+    ext = os.path.splitext(full_path)[1].lower()
+    media_window = tk.Toplevel(root)
+    media_window.configure(bg="black")
+    
+    # Переменная для плеера, чтобы она была доступна в функции закрытия
+    player_handle = [None] 
 
-        img_window = tk.Toplevel(root)
-        img_window.title(file_path)
-        img_window.configure(bg="black")
+    # 1. Создаем функцию закрытия, которая сначала стопает VLC, а потом удаляет окно
+    def on_close():
+        if player_handle[0]:
+            player_handle[0].stop()  # Останавливаем звук и видео
+        
+        # Вызываем стандартную логику закрытия (фокус и destroy)
+        # Мы достаем её позже из lock_window
+        actual_close_logic()
 
-        canvas = tk.Canvas(img_window, bg="black", highlightthickness=0)
-        canvas.pack(fill="both", expand=True)
+    # 2. Инициализируем lock_window (пока без реальной логики закрытия)
+    actual_close_logic = lock_window(media_window, 800, 600, parent=parent_window)
+    
+    # 3. Передаем нашу навороченную on_close в титлбар
+    make_titlebar(media_window, title=f"BazOS Media - {os.path.basename(file_path)}", close_command=on_close)
 
-        def resize_image(event):
-            new_width = event.width
-            new_height = event.height
-            ratio = min(new_width / img_width, new_height / img_height)
-            display_width = int(img_width * ratio)
-            display_height = int(img_height * ratio)
+    canvas = tk.Canvas(media_window, bg="black", highlightthickness=0)
+    canvas.pack(fill="both", expand=True)
 
-            resized = img.resize((display_width, display_height), Image.LANCZOS)
-            photo_resized = ImageTk.PhotoImage(resized)
+    if ext in [".mp4", ".avi", ".mkv", ".mov"]:
+        instance = vlc.Instance("--no-xlib")
+        player = instance.media_player_new()
+        player_handle[0] = player # Сохраняем ссылку для on_close
+        
+        player.set_hwnd(canvas.winfo_id())
+        media = instance.media_new(full_path)
+        player.set_media(media)
+        player.play()
 
-            canvas.delete("all")
-            canvas.create_image(
-                (new_width - display_width)//2,
-                (new_height - display_height)//2,
-                anchor="nw",
-                image=photo_resized
-            )
-            canvas.image = photo_resized
-
-        canvas.bind("<Configure>", resize_image)
-        img_window.minsize(200, 200)
-
-    except Exception as e:
-        write(f"open: error {e}\n")
+        # Дублируем закрытие на Escape
+        media_window.bind("<Escape>", lambda e: on_close())
+    else:
+        # Логика для картинок (тут плеер не нужен)
+        try:
+            img = Image.open(full_path)
+            img_width, img_height = img.size
+            def resize_image(event):
+                if event.width < 1 or event.height < 1: return
+                ratio = min(event.width / img_width, event.height / img_height)
+                resized = img.resize((int(img_width * ratio), int(img_height * ratio)), Image.LANCZOS)
+                photo = ImageTk.PhotoImage(resized)
+                canvas.delete("all")
+                canvas.create_image(event.width//2, event.height//2, anchor="center", image=photo)
+                canvas.image = photo
+            canvas.bind("<Configure>", resize_image)
+        except Exception as e:
+            write(f"open: error {e}\n")
 
 # ====== АВТОДОПОЛНЕНИЕ ======
 def autocomplete(event=None):
@@ -480,11 +478,20 @@ def run_command(event=None):
 
 
             elif command == "file":
-                open_explorer(current_dir)
+                open_explorer(
+                    current_dir, 
+                    root, 
+                    lock_window, 
+                    make_titlebar, 
+                    entry, 
+                    write, 
+                    nano, 
+                    current_dir, 
+                    open_media)
 
             elif command == "open":
                 if len(parts) > 1:
-                    open_image(parts[1])
+                    open_media(parts[1])
                 else:
                     write("open: specify a file\n")
 
