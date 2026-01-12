@@ -2,7 +2,7 @@ import os
 import tkinter as tk
 
 # ====== ПРОВОДНИК ======
-def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, nano, current_dir, open_media):
+def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, nano, current_dir, open_media, open_archive, colors):
     path = os.path.abspath(start_path)
     view_mode = "grid"  # Режимы: "grid" или "list"
     sort_mode = "type"
@@ -33,7 +33,7 @@ def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, na
     
     scroll_canvas = tk.Canvas(scroll_bar_container, width=12, bg="#111", highlightthickness=0)
     scroll_canvas.pack(fill="y", pady=2)
-    scroll_thumb = scroll_canvas.create_rectangle(2, 0, 10, 50, fill="#ff9d00", outline="")
+    scroll_thumb = scroll_canvas.create_rectangle(2, 0, 10, 50, fill=colors["orange"], outline="")
 
     # Основная область Canvas
     canvas = tk.Canvas(main_container, bg="black", highlightthickness=0)
@@ -61,14 +61,15 @@ def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, na
 
     def get_file_style(item_path):
         if os.path.isdir(item_path):
-            return "📁", "#ff9d00", 0
+            return "📁", colors["orange"], 0
         ext = os.path.splitext(item_path)[1].lower()
         styles_0 = {
-            ".lnk": ("🔅", "#0ec3f0", 4),
-            ".url": ("🔅", "#0ec3f0", 4),
+            ".lnk": ("🔅", "#0ec3f0", 1),
+            ".url": ("🔅", "#0ec3f0", 1),
         }
         styles_1 = {
             **styles_0,
+            ".exe": ("⚙️", "#ff3333", 1),
             ".zip": ("📦", "#f1c40f", 2),
             ".7z": ("📦", "#f1c40f", 2),
             ".jpg": ("🌄", "#a020f0", 3),
@@ -80,7 +81,6 @@ def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, na
             ".txt": ("📄", "#ffffff", 4),
             ".md":  ("📄", "#ffffff", 4),
             ".py":  ("🐍", "#3776ab", 4),
-            ".exe": ("⚙️", "#ff3333", 5),
         }
         return styles_1.get(ext, ("📄", "#bbbbbb", 99))
 
@@ -162,12 +162,14 @@ def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, na
         if ext == ".py": 
             write(f"python {target_path}\n")
         elif ext in [".txt", ".md"]: 
-            # Добавили parent_window=explorer
-            nano(os.path.relpath(target_path, current_dir), parent_window=explorer)
+            nano(target_path, parent_window=explorer) # Используем target_path
         elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".mp4", ".avi", ".mkv", ".mov"]:
-            rel_path = os.path.relpath(target_path, current_dir)
-            # Добавили parent_window=explorer
-            open_media(rel_path, parent_window=explorer) 
+            # Передаем target_path и все системные функции
+            open_media(target_path, parent_window=explorer, root=root, 
+                       lock_window=lock_window, make_titlebar=make_titlebar, write=write) 
+        elif ext == ".zip":
+            open_archive(target_path, parent_window=explorer, root=root, 
+                         lock_window=lock_window, make_titlebar=make_titlebar, write=write)
         else:
             try: os.startfile(target_path)
             except: pass
@@ -180,7 +182,7 @@ def open_explorer(start_path, root, lock_window, make_titlebar, entry, write, na
                         command=lambda: toggle_view_logic())
     btn_view.pack(side="left", padx=5)
 
-    btn_sort = tk.Button(toolbar, text=" 📂 Sort: Type ", bg="#3d3d3d", fg="#ff9d00", border=0, 
+    btn_sort = tk.Button(toolbar, text=" 📂 Sort: Type ", bg="#3d3d3d", fg=colors["orange"], border=0, 
                         command=lambda: toggle_sort_logic())
     btn_sort.pack(side="left", padx=5)
 

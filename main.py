@@ -1,17 +1,26 @@
 from explorer import open_explorer
+from media import open_media
+from archive import open_archive
 
 import tkinter as tk
 import os
-import shutil
-import getpass
-import platform
-import subprocess
-import time
 import psutil
 import wmi
-import vlc
+import platform
+import random
+import shutil
+import getpass
+import GPUtil  # Добавляем для GPU
+from datetime import datetime
+import platform
+import subprocess
+import psutil
+import wmi
 import pygetwindow as gw
-from PIL import Image, ImageTk
+
+
+# ====== ЦВЕТА ======
+colors = {"orange": "#ff9d00"}
 
 # ====== НАСТРОЙКИ ======
 USER = getpass.getuser()
@@ -39,7 +48,7 @@ root.configure(bg="black")
 output = tk.Text(
     root,
     bg="black",
-    fg="#ff9d00",
+    fg=colors["orange"],
     font=("Consolas", 14),
     border=0,
     state="disabled"
@@ -54,7 +63,7 @@ prompt_label = tk.Label(
     input_frame,
     text="",
     bg="#1a1a1a",
-    fg="#ff9d00",
+    fg=colors["orange"],
     font=("Consolas", 14)
 )
 prompt_label.pack(side="left")
@@ -62,8 +71,8 @@ prompt_label.pack(side="left")
 entry = tk.Entry(
     input_frame,
     bg="#1a1a1a",
-    fg="#ff9d00",
-    insertbackground="#ff9d00",
+    fg=colors["orange"],
+    insertbackground=colors["orange"],
     font=("Consolas", 14),
     border=0
 )
@@ -79,6 +88,73 @@ def write(text):
     output.insert(tk.END, text)
     output.see(tk.END)
     output.config(state="disabled")
+
+# ====== ПЛАВНЫЙ ЭФФЕКТ МАТРИЦЫ ======
+def matrix_effect():
+    matrix_win = tk.Toplevel(root)
+    matrix_win.attributes("-fullscreen", True)
+    matrix_win.attributes("-topmost", True)
+    matrix_win.configure(bg="black")
+    matrix_win.config(cursor="none")
+    
+    canvas = tk.Canvas(matrix_win, bg="black", highlightthickness=0)
+    canvas.pack(fill="both", expand=True)
+
+    width = matrix_win.winfo_screenwidth()
+    height = matrix_win.winfo_screenheight()
+    
+    font_size = 20
+    columns = int(width / font_size)
+    
+    # Скорость падения (в пикселях за кадр)
+    speed = 10 
+    # Список для хранения данных о каждой колонке: [текущая_y, список_id_текста]
+    # На старте разбрасываем их по высоте рандомно
+    column_data = []
+    
+    chars = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%^&*()阿吽空風火水土龍虎犬猫蛇蟲魚鳥あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもабвгдеёжзийклмнопрстуфхцчшщъыьэюяїєіїABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    shades = ["#ff9d00", "#c27800", "#aa6900", "#7a4b00", "#573601", "#422900", "#221000"]
+
+    # Создаем объекты текста один раз
+    for i in range(columns):
+        x = i * font_size
+        start_y = random.randint(-height, 0)
+        
+        ids = []
+        # Создаем голову и хвост
+        for j in range(len(shades)):
+            txt_id = canvas.create_text(x, start_y - (j * font_size), text=random.choice(chars), 
+                                        fill=shades[j], font=("Consolas", font_size))
+            ids.append(txt_id)
+        
+        column_data.append({"y": start_y, "ids": ids})
+
+    def draw():
+        for i in range(columns):
+            data = column_data[i]
+            data["y"] += speed # Плавно увеличиваем Y на пиксели, а не на клетки
+            
+            x = i * font_size
+            
+            # Двигаем каждый сегмент хвоста и обновляем символ в "голове"
+            for j, txt_id in enumerate(data["ids"]):
+                cur_y = data["y"] - (j * font_size)
+                canvas.coords(txt_id, x, cur_y)
+                
+                # Рандомно меняем символ для эффекта мерцания
+                if random.random() > 0.9:
+                    canvas.itemconfig(txt_id, text=random.choice(chars))
+            
+            # Если хвост полностью ушел за экран, перекидываем наверх
+            if data["y"] - (len(shades) * font_size) > height:
+                data["y"] = -font_size
+                
+        matrix_win.after(20, draw) # Интервал 20мс (~50 FPS)
+
+    matrix_win.bind("<Key>", lambda e: matrix_win.destroy())
+    matrix_win.bind("<Button-1>", lambda e: matrix_win.destroy())
+    
+    draw()
 
 # ====== БЛОКИРОВКА ОКНА ======
 def lock_window(window, w=800, h=500, parent=None): # Добавили аргумент parent
@@ -112,10 +188,10 @@ def on_closing():
         os.remove(history_file)
     root.destroy()
 
-# ====== КАСТОМНЫЙ ТИТЛБАР ======
+# ====== КАСТОМНЫЙ ТИТЛБАР (Верхная поебота с крестиком и тд) ======
 def make_titlebar(window, title="Window", close_command=None):
     bg_color = "#1a1a1a"
-    accent_color = "#ff9d00"
+    accent_color = colors["orange"]
 
     titlebar = tk.Frame(window, bg=bg_color, height=30)
     titlebar.pack(fill="x", side="top")
@@ -170,18 +246,273 @@ def make_titlebar(window, title="Window", close_command=None):
 def help():
     write("\nAvailable commands:\n")
     write("--------------------------------------------------\n")
-    write("ls        - show files and folders in current directory\n")
-    write("pwd       - show current directory path\n")
-    write("cd <dir>  - change directory\n")
-    write("mkdir <n> - create a new folder\n")
-    write("rm <n>    - delete file or folder\n")
-    write("clear     - clear terminal screen\n")
-    write("file      - open file explorer\n")
-    write("open <f>  - open image file\n")
-    write("bazfetch  - show system information and BazOS logo\n")
-    write("exit      - exit from terminal\n")
-    write("help      - show this help message\n")
+    write("ls          - show files and folders in current directory\n")
+    write("pwd         - show current directory path\n")
+    write("cd <dir>    - change directory\n")
+    write("mkdir <n>   - create a new folder\n")
+    write("rm <n>      - delete file or folder\n")
+    write("clear       - clear terminal screen\n")
+    write("file        - open graphical file explorer\n")
+    write("open <f>    - open image or video file\n")
+    write("nano <f>    - open text editor for a file\n")
+    write("unzip <f>   - open or extract ZIP archive\n")
+    write("python <f>  - execute a python script\n")
+    write("calc        - open BazCalc (calculator)\n")
+    write("stat        - open hardware monitor (CPU, GPU, RAM)\n")
+    write("taskmgr     - open task manager to manage processes\n")
+    write("matrix      - run the digital rain matrix effect\n")
+    write("bazfetch    - show system information and BazOS logo\n")
+    write("exit        - exit from terminal\n")
+    write("help        - show this help message\n")
     write("--------------------------------------------------\n\n")
+
+# ====== ГРАФИЧЕСКАЯ СПРАВКА ======
+def graf_help():
+    # Создаем окно
+    h_win = tk.Toplevel(root)
+    h_win.configure(bg="black")
+    
+    # Используем ваши системные функции для стилизации
+    close_cmd = lock_window(h_win, 600, 500)
+    make_titlebar(h_win, title="BazOS System Help", close_command=close_cmd)
+
+    # Контейнер для текста с прокруткой
+    frame = tk.Frame(h_win, bg="black")
+    frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+    scrollbar = tk.Scrollbar(frame, bg="#1a1a1a", troughcolor="black")
+    scrollbar.pack(side="right", fill="y")
+
+    help_text = tk.Text(
+        frame, bg="black", fg=colors["orange"], 
+        font=("Consolas", 11), border=0, 
+        yscrollcommand=scrollbar.set, state="normal"
+    )
+    help_text.pack(side="left", fill="both", expand=True)
+    scrollbar.config(command=help_text.yview)
+
+    # Список команд (согласно функционалу вашей ОС)
+    commands_info = """
+ [ SYSTEM COMMANDS ]
+ --------------------------------------------------
+ ls        - Show files and folders
+ pwd       - Show current directory path
+ cd <dir>  - Change directory
+ clear     - Clear terminal screen
+ exit      - Shutdown system
+ bazfetch  - System info & Logo
+ help      - Text-based help
+
+ [ FILE MANAGEMENT ]
+ --------------------------------------------------
+ file      - Open Graphical Explorer
+ nano <f>  - Text Editor
+ mkdir <n> - Create folder
+ rm <n>    - Delete file/folder
+ unzip <f> - Archive manager
+ open <f>  - Media player (Img/Vid)
+
+ [ APPLICATIONS ]
+ --------------------------------------------------
+ calc      - Calculator
+ stat      - Hardware Monitor
+ taskmgr   - Process Manager
+ matrix    - Visual Effect
+    """
+    
+    help_text.insert("1.0", commands_info)
+    help_text.config(state="disabled") # Только для чтения
+
+    # Подсказка внизу
+    footer = tk.Label(h_win, text="Press ESC to close", bg="#1a1a1a", fg=colors["orange"], font=("Consolas", 9))
+    footer.pack(fill="x", side="bottom")
+
+def open_calculator():
+    calc = tk.Toplevel(root)
+    close_cmd = lock_window(calc, 300, 450)
+    make_titlebar(calc, title="BazCalc", close_command=close_cmd)
+    calc.configure(bg="black")
+
+    display = tk.Entry(calc, bg="#1a1a1a", fg=colors["orange"], font=("Consolas", 20), border=0, justify="right")
+    display.pack(fill="x", padx=10, pady=10)
+
+    buttons = [
+        '7', '8', '9', '/',
+        '4', '5', '6', '*',
+        '1', '2', '3', '-',
+        'C', '0', '=', '+'
+    ]
+
+    btn_frame = tk.Frame(calc, bg="black")
+    btn_frame.pack(expand=True, fill="both", padx=5, pady=5)
+
+    def on_click(char):
+        if char == '=':
+            try: display.insert(tk.END, f"={eval(display.get())}")
+            except: display.delete(0, tk.END); display.insert(0, "Error")
+        elif char == 'C': display.delete(0, tk.END)
+        else: display.insert(tk.END, char)
+
+    for i, btn in enumerate(buttons):
+        tk.Button(btn_frame, text=btn, bg="#1a1a1a", fg=colors["orange"], font=("Consolas", 14),
+                  activebackground=colors["orange"], border=1, 
+                  command=lambda b=btn: on_click(b)).grid(row=i//4, column=i%4, sticky="nsew", padx=2, pady=2)
+
+    for i in range(4):
+        btn_frame.grid_columnconfigure(i, weight=1)
+        btn_frame.grid_rowconfigure(i, weight=1)
+
+def open_monitor():
+    mon = tk.Toplevel(root)
+    close_cmd = lock_window(mon, 550, 650)
+    make_titlebar(mon, title="BazStat v2.0 - Hardware Pulse", close_command=close_cmd)
+    mon.configure(bg="black")
+
+    stats_label = tk.Label(mon, bg="black", fg=colors["orange"], font=("Consolas", 10), justify="left", anchor="nw")
+    stats_label.pack(fill="both", expand=True, padx=20, pady=10)
+
+    def update():
+        if not mon.winfo_exists(): return
+        
+        # Данные железа
+        cpu_p = psutil.cpu_percent()
+        ram = psutil.virtual_memory()
+        disk = psutil.disk_usage(current_dir)
+        net = psutil.net_io_counters()
+        
+        # GPU данные через GPUtil
+        gpu_text = "No GPU detected or drivers missing"
+        try:
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                g = gpus[0]
+                gpu_text = f"Name: {g.name}\n Load: {g.load*100:.1f}%\n Temp: {g.temperature}°C\n VRAM: {g.memoryUsed}MB / {g.memoryTotal}MB"
+        except: pass
+
+        # Сборка текста
+        text = f"--- [ CPU ] ----------------------------\n"
+        text += f" Load: {cpu_p}%\n"
+        # Температура (может не работать без прав админа)
+        try:
+            temp = psutil.sensors_temperatures()
+            if 'coretemp' in temp:
+                text += f" Temp: {temp['coretemp'][0].current}°C\n"
+        except: pass
+        
+        text += f"\n--- [ GPU ] ----------------------------\n{gpu_text}\n"
+        
+        text += f"\n--- [ MEMORY ] -------------------------\n"
+        text += f" Usage: {ram.percent}% ({ram.used//1024**2}MB / {ram.total//1024**2}MB)\n"
+        
+        text += f"\n--- [ STORAGE ({current_dir[:3]}) ] -----------\n"
+        text += f" Usage: {disk.percent}% | Free: {disk.free//1024**3}GB\n"
+        
+        text += f"\n--- [ NETWORK ] ------------------------\n"
+        text += f" Sent: {net.bytes_sent//1024**2} MB\n"
+        text += f" Recv: {net.bytes_recv//1024**2} MB\n"
+
+        stats_label.config(text=text)
+        mon.after(1000, update)
+
+    update()
+
+def get_system_stats():
+    stats = {}
+    
+    # CPU & RAM
+    stats['cpu_load'] = psutil.cpu_percent(interval=None)
+    stats['ram'] = psutil.virtual_memory()
+    
+    # GPU
+    gpus = GPUtil.getGPUs()
+    if gpus:
+        gpu = gpus[0]
+        stats['gpu_name'] = gpu.name
+        stats['gpu_load'] = gpu.load * 100
+        stats['gpu_temp'] = gpu.temperature
+        stats['vram_used'] = gpu.memoryUsed
+        stats['vram_total'] = gpu.memoryTotal
+    else:
+        stats['gpu_name'] = "Not Found"
+        stats['gpu_load'] = 0
+        stats['gpu_temp'] = 0
+        
+    # Сеть и Диски
+    stats['net'] = psutil.net_io_counters()
+    stats['disk'] = psutil.disk_usage(current_dir)
+    
+    return stats
+
+def open_taskmgr():
+    tm = tk.Toplevel(root)
+    close_cmd = lock_window(tm, 650, 500)
+    make_titlebar(tm, title="BazOS Task Manager", close_command=close_cmd)
+    tm.configure(bg="black")
+
+    frame = tk.Frame(tm, bg="black")
+    frame.pack(fill="both", expand=True, padx=10, pady=5)
+    
+    scrollbar = tk.Scrollbar(frame, bg="#1a1a1a")
+    scrollbar.pack(side="right", fill="y")
+
+    listbox = tk.Listbox(
+        frame, bg="black", fg=colors["orange"], 
+        font=("Consolas", 10), borderwidth=0, 
+        highlightthickness=1, highlightbackground="#333",
+        yscrollcommand=scrollbar.set,
+        selectbackground=colors["orange"], selectforeground="black"
+    )
+    listbox.pack(side="left", fill="both", expand=True)
+    scrollbar.config(command=listbox.yview)
+
+    def refresh():
+        listbox.delete(0, tk.END)
+        active_apps = []
+        background_procs = []
+
+        for proc in psutil.process_iter(['pid', 'name', 'username']):
+            try:
+                p_info = proc.info
+                # Логика определения: если запущен от текущего юзера - скорее всего активное
+                entry_str = f"{p_info['name']:<25} | PID: {p_info['pid']:<8}"
+                
+                if p_info['username'] == USER:
+                    active_apps.append(entry_str)
+                else:
+                    background_procs.append(entry_str)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # Сортировка по алфавиту (без учета регистра)
+        active_apps.sort(key=str.lower)
+        background_procs.sort(key=str.lower)
+
+        listbox.insert(tk.END, " [!] ACTIVE USER APPLICATIONS ".center(60, "-"))
+        for app in active_apps:
+            listbox.insert(tk.END, f" {app}")
+        
+        listbox.insert(tk.END, "") 
+        listbox.insert(tk.END, " [.] BACKGROUND SYSTEM PROCESSES ".center(60, "-"))
+        for proc in background_procs:
+            listbox.insert(tk.END, f" {proc}")
+
+    def kill_proc():
+        selected = listbox.get(tk.ACTIVE)
+        if "PID:" in selected:
+            pid = int(selected.split("PID:")[1].strip().split()[0])
+            try:
+                psutil.Process(pid).kill()
+                refresh()
+            except Exception as e:
+                write(f"taskmgr: failed to kill {pid}: {e}\n")
+
+    btn_frame = tk.Frame(tm, bg="black")
+    btn_frame.pack(fill="x", pady=5)
+    
+    tk.Button(btn_frame, text=" REFRESH ", bg="#1a1a1a", fg=colors["orange"], command=refresh, border=1).pack(side="left", padx=10)
+    tk.Button(btn_frame, text=" KILL PROCESS ", bg="#300", fg="#f44", command=kill_proc, border=1).pack(side="right", padx=10)
+    
+    refresh()
 
 # ====== БЛОКНОТ (nano) ======
 def nano(filename, parent_window=None):
@@ -193,7 +524,7 @@ def nano(filename, parent_window=None):
     make_titlebar(editor, title=f"nano - {filename}", close_command=close_cmd)
     
     editor.configure(bg="black")
-    text_widget = tk.Text(editor, bg="black", fg="#ff9d00", insertbackground="#ff9d00", font=("Consolas", 13), border=0, padx=10, pady=10)
+    text_widget = tk.Text(editor, bg="black", fg=colors["orange"], insertbackground=colors["orange"], font=("Consolas", 13), border=0, padx=10, pady=10)
     text_widget.pack(expand=True, fill="both")
 
     if os.path.exists(full_path):
@@ -207,7 +538,7 @@ def nano(filename, parent_window=None):
 
     help_bar = tk.Frame(editor, bg="#1a1a1a")
     help_bar.pack(fill="x", side="bottom")
-    tk.Label(help_bar, text=" [Ctrl+S] Save  [Ctrl+X] Exit ", bg="#1a1a1a", fg="#ff9d00", font=("Consolas", 9)).pack(pady=2)
+    tk.Label(help_bar, text=" [Ctrl+S] Save  [Ctrl+X] Exit ", bg="#1a1a1a", fg=colors["orange"], font=("Consolas", 9)).pack(pady=2)
 
     editor.bind("<Control-s>", lambda e: save())
     editor.bind("<Control-x>", lambda e: close_cmd())
@@ -278,66 +609,6 @@ def bazfetch():
         write(f"{left}   {right}\n")
     write("\n")
 
-# ====== УНИВЕРСАЛЬНЫЙ МЕДИАПЛЕЕР (ФОТО И ВИДЕО) ======
-def open_media(file_path, parent_window=None):
-    full_path = os.path.abspath(os.path.join(current_dir, file_path))
-    if not os.path.isfile(full_path):
-        write(f"open: {file_path} does not exist\n")
-        return
-
-    ext = os.path.splitext(full_path)[1].lower()
-    media_window = tk.Toplevel(root)
-    media_window.configure(bg="black")
-    
-    # Переменная для плеера, чтобы она была доступна в функции закрытия
-    player_handle = [None] 
-
-    # 1. Создаем функцию закрытия, которая сначала стопает VLC, а потом удаляет окно
-    def on_close():
-        if player_handle[0]:
-            player_handle[0].stop()  # Останавливаем звук и видео
-        
-        # Вызываем стандартную логику закрытия (фокус и destroy)
-        # Мы достаем её позже из lock_window
-        actual_close_logic()
-
-    # 2. Инициализируем lock_window (пока без реальной логики закрытия)
-    actual_close_logic = lock_window(media_window, 800, 600, parent=parent_window)
-    
-    # 3. Передаем нашу навороченную on_close в титлбар
-    make_titlebar(media_window, title=f"BazOS Media - {os.path.basename(file_path)}", close_command=on_close)
-
-    canvas = tk.Canvas(media_window, bg="black", highlightthickness=0)
-    canvas.pack(fill="both", expand=True)
-
-    if ext in [".mp4", ".avi", ".mkv", ".mov"]:
-        instance = vlc.Instance("--no-xlib")
-        player = instance.media_player_new()
-        player_handle[0] = player # Сохраняем ссылку для on_close
-        
-        player.set_hwnd(canvas.winfo_id())
-        media = instance.media_new(full_path)
-        player.set_media(media)
-        player.play()
-
-        # Дублируем закрытие на Escape
-        media_window.bind("<Escape>", lambda e: on_close())
-    else:
-        # Логика для картинок (тут плеер не нужен)
-        try:
-            img = Image.open(full_path)
-            img_width, img_height = img.size
-            def resize_image(event):
-                if event.width < 1 or event.height < 1: return
-                ratio = min(event.width / img_width, event.height / img_height)
-                resized = img.resize((int(img_width * ratio), int(img_height * ratio)), Image.LANCZOS)
-                photo = ImageTk.PhotoImage(resized)
-                canvas.delete("all")
-                canvas.create_image(event.width//2, event.height//2, anchor="center", image=photo)
-                canvas.image = photo
-            canvas.bind("<Configure>", resize_image)
-        except Exception as e:
-            write(f"open: error {e}\n")
 
 # ====== АВТОДОПОЛНЕНИЕ ======
 def autocomplete(event=None):
@@ -476,18 +747,38 @@ def run_command(event=None):
                 else:
                     write("Usage: python <script.py>\n")
 
+            elif command == "matrix":
+                matrix_effect()
+
+            elif command == "unzip":
+                if len(parts) > 1:
+                    open_archive(parts[1])
+                else:
+                    write("Usage: unzip <file.zip>\n")
 
             elif command == "file":
                 open_explorer(
-                    current_dir, 
-                    root, 
-                    lock_window, 
-                    make_titlebar, 
-                    entry, 
-                    write, 
-                    nano, 
-                    current_dir, 
-                    open_media)
+                    current_dir,      # start_path
+                    root,             # root
+                    lock_window,      # lock_window
+                    make_titlebar,    # make_titlebar
+                    entry,            # entry
+                    write,            # write
+                    nano,             # nano
+                    current_dir,      # current_dir (аргумент пути)
+                    open_media,       # open_media
+                    open_archive,     # open_archive (ОБЯЗАТЕЛЬНО 10-й аргумент)
+                    colors            # colors
+                )
+
+            elif command == "calc":
+                open_calculator()
+
+            elif command == "stat":
+                open_monitor()
+                
+            elif command == "taskmgr":
+                open_taskmgr()
 
             elif command == "open":
                 if len(parts) > 1:
@@ -500,6 +791,9 @@ def run_command(event=None):
 
             elif command == "help":
                 help()
+
+            elif command == "ghelp": # или "graf_help"
+                graf_help()
 
             elif command == "exit":
                 on_closing()
